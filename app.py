@@ -53,33 +53,53 @@ st.markdown("""
         border: 1px solid #30363D;
         margin-bottom: 20px;
     }
-    .requirement-box {
-        background-color: #161B22;
-        padding: 15px;
-        border-radius: 8px;
-        border: 1px solid #4CAF50;
-        margin-bottom: 10px;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- CROP KNOWLEDGE & MAPPING ---
+# --- MASTER KNOWLEDGE BASE (22 CROPS) ---
 CROP_IDEALS = {
     "RICE": {"N": 80, "P": 40, "K": 40, "pH": "5.5-6.5", "Rain": "1000mm+", "Tip": "Maintain standing water."},
     "MAIZE": {"N": 100, "P": 50, "K": 30, "pH": "6.0-7.0", "Rain": "500-800mm", "Tip": "Ensure good drainage."},
-    "WHEAT": {"N": 120, "P": 60, "K": 40, "pH": "6.0-7.5", "Rain": "450-650mm", "Tip": "Requires cool weather."},
-    "COTTON": {"N": 100, "P": 50, "K": 50, "pH": "5.5-7.5", "Rain": "500-1000mm", "Tip": "Avoid excess Nitrogen late season."},
-    "GRAPES": {"N": 50, "P": 30, "K": 80, "pH": "6.5-7.5", "Rain": "400-600mm", "Tip": "High Potassium is key."},
+    "CHICKPEA": {"N": 40, "P": 60, "K": 80, "pH": "6.0-9.0", "Rain": "600-950mm", "Tip": "Avoid waterlogging."},
+    "KIDNEYBEANS": {"N": 20, "P": 60, "K": 20, "pH": "5.5-6.0", "Rain": "600-1000mm", "Tip": "Requires moderate temp."},
+    "PIGEONPEAS": {"N": 20, "P": 70, "K": 20, "pH": "5.0-8.5", "Rain": "600-1100mm", "Tip": "Drought resistant crop."},
+    "MOTHBEANS": {"N": 20, "P": 40, "K": 20, "pH": "4.0-9.0", "Rain": "300-600mm", "Tip": "Thrives in arid regions."},
+    "MUNGBEAN": {"N": 20, "P": 40, "K": 20, "pH": "6.2-7.2", "Rain": "600-900mm", "Tip": "Quick growing legume."},
+    "BLACKGRAM": {"N": 40, "P": 60, "K": 20, "pH": "5.0-8.5", "Rain": "600-1000mm", "Tip": "Rich in protein."},
+    "LENTIL": {"N": 20, "P": 60, "K": 20, "pH": "5.9-6.8", "Rain": "400-600mm", "Tip": "Winter season crop."},
+    "POMEGRANATE": {"N": 20, "P": 10, "K": 40, "pH": "5.5-7.5", "Rain": "500-800mm", "Tip": "High export value."},
+    "BANANA": {"N": 100, "P": 75, "K": 50, "pH": "6.5-7.5", "Rain": "1500-2500mm", "Tip": "Needs lots of water."},
+    "MANGO": {"N": 20, "P": 20, "K": 30, "pH": "4.5-7.0", "Rain": "750-1000mm", "Tip": "Thrives in tropical climate."},
+    "GRAPES": {"N": 50, "P": 30, "K": 80, "pH": "6.5-7.5", "Rain": "400-600mm", "Tip": "Potassium helps sweetness."},
+    "WATERMELON": {"N": 100, "P": 10, "K": 50, "pH": "6.0-7.0", "Rain": "400-500mm", "Tip": "Requires sandy soil."},
+    "MUSKMELON": {"N": 100, "P": 10, "K": 50, "pH": "6.0-6.7", "Rain": "400-600mm", "Tip": "Sunlight is critical."},
+    "APPLE": {"N": 20, "P": 120, "K": 200, "pH": "5.5-6.5", "Rain": "1000-1500mm", "Tip": "Needs cool winters."},
+    "ORANGE": {"N": 20, "P": 10, "K": 10, "pH": "5.5-6.5", "Rain": "1000-1500mm", "Tip": "Citrus needs well-drained soil."},
+    "PAPAYA": {"N": 50, "P": 50, "K": 50, "pH": "5.5-6.5", "Rain": "1500-2000mm", "Tip": "Fast growing, needs warmth."},
+    "COCONUT": {"N": 20, "P": 10, "K": 30, "pH": "5.0-8.0", "Rain": "1500-2500mm", "Tip": "Coastal soil is best."},
+    "COTTON": {"N": 100, "P": 50, "K": 50, "pH": "5.5-7.5", "Rain": "500-1000mm", "Tip": "Avoid excess late N."},
+    "JUTE": {"N": 80, "P": 40, "K": 40, "pH": "6.0-7.0", "Rain": "1200-1500mm", "Tip": "Golden fiber needs humid heat."},
     "COFFEE": {"N": 100, "P": 20, "K": 30, "pH": "6.0-7.0", "Rain": "1500-2000mm", "Tip": "Requires shade."}
 }
 
 CROP_MAPPER = {
-    "RICE": "Paddy(Dhan)(Common)",
-    "MAIZE": "Maize",
-    "WHEAT": "Wheat",
-    "COTTON": "Cotton",
-    "GRAPES": "Grapes",
-    "COFFEE": "Coffee"
+    "RICE": "Paddy(Dhan)(Common)", "MAIZE": "Maize", "CHICKPEA": "Gram Raw(Whole)",
+    "KIDNEYBEANS": "Rajmah", "PIGEONPEAS": "Arhar (Tur/Red Gram)", "MOTHBEANS": "Bhallar",
+    "MUNGBEAN": "Moong(Green Gram)(Whole)", "BLACKGRAM": "Black Gram (Urd Beans)(Whole)",
+    "LENTIL": "Masur Dal", "POMEGRANATE": "Pomegranate", "BANANA": "Banana",
+    "MANGO": "Mango", "GRAPES": "Grapes", "WATERMELON": "Watermelon",
+    "MUSKMELON": "Muskmelon", "APPLE": "Apple", "ORANGE": "Orange",
+    "PAPAYA": "Papaya", "COCONUT": "Coconut", "COTTON": "Cotton",
+    "JUTE": "Jute", "COFFEE": "Coffee"
+}
+
+FALLBACK_PRICES = {
+    "RICE": 2183, "MAIZE": 2090, "CHICKPEA": 5335, "KIDNEYBEANS": 8500,
+    "PIGEONPEAS": 7000, "MOTHBEANS": 6000, "MUNGBEAN": 7755, "BLACKGRAM": 6950,
+    "LENTIL": 6000, "POMEGRANATE": 7500, "BANANA": 2500, "MANGO": 4000,
+    "GRAPES": 8500, "WATERMELON": 1500, "MUSKMELON": 2000, "APPLE": 9000,
+    "ORANGE": 4500, "PAPAYA": 2500, "COCONUT": 3000, "COTTON": 6620,
+    "JUTE": 5050, "COFFEE": 12500
 }
 
 # --- HELPER FUNCTIONS ---
@@ -97,13 +117,10 @@ def get_live_weather(city):
 
 @st.cache_data(ttl=3600)
 def fetch_live_market_data(crop_name):
-    # Standard prices used if live API data is empty
-    FALLBACK_PRICES = {
-        "COFFEE": 12500, "RICE": 2183, "MAIZE": 2090, 
-        "WHEAT": 2275, "COTTON": 6620, "GRAPES": 8500
-    }
-    
-    commodity = CROP_MAPPER.get(crop_name, crop_name.capitalize())
+    commodity = CROP_MAPPER.get(crop_name)
+    if not commodity:
+        return {"price": FALLBACK_PRICES.get(crop_name, "N/A"), "market": "Standard Market", "state": "National Average", "date": "N/A", "is_live": False}
+
     resource_id = "9ef273d1-c141-414e-b246-e0e64332305c"
     url = f"https://api.data.gov.in/resource/{resource_id}?api-key={DATA_GOV_API_KEY}&format=json&filters[commodity]={commodity}"
     
@@ -111,22 +128,10 @@ def fetch_live_market_data(crop_name):
         response = requests.get(url).json()
         if response.get('records') and len(response['records']) > 0:
             data = response['records'][0]
-            return {
-                "price": data['modal_price'],
-                "market": data['market'],
-                "state": data['state'],
-                "date": data['arrival_date'],
-                "is_live": True
-            }
+            return {"price": data['modal_price'], "market": data['market'], "state": data['state'], "date": data['arrival_date'], "is_live": True}
     except: pass
     
-    return {
-        "price": FALLBACK_PRICES.get(crop_name, "N/A"),
-        "market": "Standard Market",
-        "state": "National Average",
-        "date": datetime.now().strftime("%d/%m/%Y"),
-        "is_live": False
-    }
+    return {"price": FALLBACK_PRICES.get(crop_name, "N/A"), "market": "Standard Market", "state": "National Average", "date": datetime.now().strftime("%d/%m/%Y"), "is_live": False}
 
 def generate_pdf(crop_list, data_dict, fert_advice, market_info):
     pdf = FPDF()
@@ -188,7 +193,7 @@ if app_mode == "Predict Crop":
         h_val = float(st.session_state.get('hum', 80.0))
         temp = st.slider("Temperature (°C)", 0.0, 50.0, t_val)
         hum = st.slider("Humidity (%)", 0.0, 100.0, h_val)
-        rain = st.number_input("Rainfall (mm)", 0.0, 1000.0, 200.0)
+        rain = st.number_input("Rainfall (mm)", 0.0, 1500.0, 200.0)
 
     if st.button("🚀 RUN ANALYSIS"):
         if model and scaler:
@@ -241,8 +246,7 @@ else:
     data = CROP_IDEALS[selected_crop]
     st.write("---")
     st.markdown(f"### Ideal Conditions for <span class='green-text'>{selected_crop}</span>", unsafe_allow_html=True)
-    st.markdown(f"""<div class="requirement-box"><b>N-P-K:</b> {data['N']}-{data['P']}-{data['K']}<br><b>pH:</b> {data['pH']}<br><b>Rain:</b> {data['Rain']}</div>""", unsafe_allow_html=True)
     st.info(f"**Growth Tip:** {data['Tip']}")
 
 st.markdown("---")
-st.caption(f"© {datetime.now().year} AgriSmart Systems | Real-Time Agricultural Data")
+st.caption(f"© {datetime.now().year} AgriSmart Systems | Sustainable Agriculture Data")
