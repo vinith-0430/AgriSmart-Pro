@@ -15,8 +15,8 @@ st.set_page_config(
 
 # --- CONFIG & API KEYS ---
 WEATHER_API_KEY = "c39514d4a14765b3dae51ceaa920491c"
-# Placeholder for your data.gov.in key - you will provide this next
-DATA_GOV_API_KEY = "YOUR_DATA_GOV_API_KEY_HERE" 
+# Your personal Data.gov.in API Key
+DATA_GOV_API_KEY = "579b464db66ec23bdd000001f73c7b1106ca46aa508a971af69425e2" 
 
 # --- PROFESSIONAL DARK UI CSS ---
 st.markdown("""
@@ -58,7 +58,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- CROP KNOWLEDGE & MAPPING ---
-# Used for Fertilizer analysis (Ideal values)
 CROP_IDEALS = {
     "RICE": {"N": 80, "P": 40, "K": 40, "pH": "5.5-6.5", "Rain": "1000mm+", "Tip": "Maintain standing water."},
     "MAIZE": {"N": 100, "P": 50, "K": 30, "pH": "6.0-7.0", "Rain": "500-800mm", "Tip": "Ensure good drainage."},
@@ -68,14 +67,22 @@ CROP_IDEALS = {
     "COFFEE": {"N": 100, "P": 20, "K": 30, "pH": "6.0-7.0", "Rain": "1500-2000mm", "Tip": "Requires shade."}
 }
 
-# Maps model crop names to Government API commodity names
+# Maps model labels to Government Agmarknet commodity names
 CROP_MAPPER = {
     "RICE": "Paddy(Dhan)(Common)",
     "MAIZE": "Maize",
     "WHEAT": "Wheat",
     "COTTON": "Cotton",
     "GRAPES": "Grapes",
-    "COFFEE": "Coffee"
+    "COFFEE": "Coffee",
+    "APPLE": "Apple",
+    "ORANGE": "Orange",
+    "PAPAYA": "Papaya",
+    "BANANA": "Banana",
+    "POMEGRANATE": "Pomegranate",
+    "LENTIL": "Masur Dal",
+    "CHICKPEA": "Gram Raw(Whole)",
+    "PIGEONPEAS": "Arhar (Tur/Red Gram)"
 }
 
 # --- HELPER FUNCTIONS ---
@@ -94,7 +101,6 @@ def get_live_weather(city):
 @st.cache_data(ttl=3600)
 def fetch_live_market_data(crop_name):
     commodity = CROP_MAPPER.get(crop_name, crop_name.capitalize())
-    # Resource ID for "Current Daily Price of Various Commodities"
     resource_id = "9ef273d1-c141-414e-b246-e0e64332305c"
     url = f"https://api.data.gov.in/resource/{resource_id}?api-key={DATA_GOV_API_KEY}&format=json&filters[commodity]={commodity}"
     
@@ -124,6 +130,12 @@ def generate_pdf(crop_list, data_dict, fert_advice, market_info):
     pdf.set_font("Arial", size=10)
     for key, val in data_dict.items():
         pdf.cell(200, 8, txt=f"{key}: {val}", ln=True)
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(200, 10, txt="Fertilizer Gap Analysis (Top Crop):", ln=True)
+    pdf.set_font("Arial", size=10)
+    for line in fert_advice:
+        pdf.cell(200, 8, txt=line, ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
 @st.cache_resource
@@ -177,7 +189,7 @@ if app_mode == "Predict Crop":
             features = np.array([[N, P, K, temp, hum, ph, rain]])
             scaled_features = scaler.transform(features)
             
-            # Prediction
+            # Predict Top 3
             probs = model.predict_proba(scaled_features)[0]
             top_indices = np.argsort(probs)[-3:][::-1]
             top_crops = [model.classes_[i].upper() for i in top_indices]
@@ -189,7 +201,7 @@ if app_mode == "Predict Crop":
                     <p style="color: #4CAF50; font-size: 14px; font-weight: bold;">OPTION {i+1} ({prob*100:.1f}% Match)</p>
                     <h2 style="color: #FFFFFF; margin: 0;">{crop}</h2></div>""", unsafe_allow_html=True)
 
-            # Internet Market Data
+            # Internet Market Data (Primary Crop)
             primary_crop = top_crops[0]
             market_info = fetch_live_market_data(primary_crop)
             
@@ -199,7 +211,7 @@ if app_mode == "Predict Crop":
                 m1.metric("Modal Price (Avg)", f"Rs. {market_info['price']} / Quintal")
                 m2.info(f"📍 **Market:** {market_info['market']}, {market_info['state']}\n📅 **Last Updated:** {market_info['date']}")
             else:
-                st.warning("Live market data currently unavailable for this commodity.")
+                st.warning(f"Live market data for {primary_crop} currently unavailable.")
 
             # Fertilizer Logic
             fert_advice = []
@@ -231,4 +243,4 @@ else:
     st.info(f"**Growth Tip:** {data['Tip']}")
 
 st.markdown("---")
-st.caption(f"© {datetime.now().year} AgriSmart Systems | Real-Time Agricultural Intelligence")
+st.caption(f"© {datetime.now().year} AgriSmart Systems | Sustainable Agriculture Data")
