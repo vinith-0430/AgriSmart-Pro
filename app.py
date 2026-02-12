@@ -52,6 +52,7 @@ st.markdown("""
         border-radius: 10px;
         border: 1px solid #30363D;
         margin-bottom: 20px;
+        min-height: 120px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -118,9 +119,6 @@ def get_live_weather(city):
 @st.cache_data(ttl=3600)
 def fetch_live_market_data(crop_name):
     commodity = CROP_MAPPER.get(crop_name)
-    if not commodity:
-        return {"price": FALLBACK_PRICES.get(crop_name, "N/A"), "market": "Standard Market", "state": "National Average", "date": "N/A", "is_live": False}
-
     resource_id = "9ef273d1-c141-414e-b246-e0e64332305c"
     url = f"https://api.data.gov.in/resource/{resource_id}?api-key={DATA_GOV_API_KEY}&format=json&filters[commodity]={commodity}"
     
@@ -137,10 +135,10 @@ def generate_pdf(crop_list, data_dict, fert_advice, market_info):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="AgriSmart Pro - Comprehensive Farm Report", ln=True, align='C')
+    pdf.cell(200, 10, txt="AgriSmart Pro - Farm Analysis Report", ln=True, align='C')
     pdf.ln(10)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(200, 10, txt=f"Primary Recommendation: {crop_list[0]}", ln=True)
+    pdf.cell(200, 10, txt=f"Analysis for: {crop_list[0]}", ln=True)
     if market_info:
         pdf.cell(200, 10, txt=f"Market Price: Rs. {market_info['price']} / Quintal", ln=True)
     pdf.ln(5)
@@ -193,52 +191,70 @@ if app_mode == "Predict Crop":
         h_val = float(st.session_state.get('hum', 80.0))
         temp = st.slider("Temperature (°C)", 0.0, 50.0, t_val)
         hum = st.slider("Humidity (%)", 0.0, 100.0, h_val)
-        rain = st.number_input("Rainfall (mm)", 0.0, 1500.0, 200.0)
+        rain = st.number_input("Rainfall (mm)", 0.0, 2000.0, 200.0)
 
+    # --- PREDICTION LOGIC ---
     if st.button("🚀 RUN ANALYSIS"):
         if model and scaler:
             features = np.array([[N, P, K, temp, hum, ph, rain]])
             scaled_features = scaler.transform(features)
-            
             probs = model.predict_proba(scaled_features)[0]
             top_indices = np.argsort(probs)[-3:][::-1]
-            top_crops = [model.classes_[i].upper() for i in top_indices]
-            top_probs = [probs[i] for i in top_indices]
-
-            st.markdown("### 🏆 Top Recommendations")
-            for i, (crop, prob) in enumerate(zip(top_crops, top_probs)):
-                st.markdown(f"""<div class="result-card">
-                    <p style="color: #4CAF50; font-size: 14px; font-weight: bold;">OPTION {i+1} ({prob*100:.1f}% Match)</p>
-                    <h2 style="color: #FFFFFF; margin: 0;">{crop}</h2></div>""", unsafe_allow_html=True)
-
-            primary_crop = top_crops[0]
-            market_info = fetch_live_market_data(primary_crop)
             
-            if market_info:
-                status_label = "🟢 LIVE MARKET DATA" if market_info['is_live'] else "🟡 ESTIMATED PRICE (Live Offline)"
-                st.markdown(f"### {status_label}")
-                m1, m2 = st.columns(2)
-                m1.metric("Market Price", f"Rs. {market_info['price']} / Quintal")
-                m2.info(f"📍 **Source:** {market_info['market']}, {market_info['state']}\n📅 **Updated:** {market_info['date']}")
+            # Save results to session state
+            st.session_state['top_crops'] = [model.classes_[i].upper() for i in top_indices]
+            st.session_state['top_probs'] = [probs[i] for i in top_indices]
+            st.session_state['ready'] = True
 
-            fert_advice = []
-            if primary_crop in CROP_IDEALS:
-                st.markdown("### 🛠️ Fertilizer Gap Analysis")
-                ideal = CROP_IDEALS[primary_crop]
-                gaps = {"N": ideal['N']-N, "P": ideal['P']-P, "K": ideal['K']-K}
-                cols = st.columns(3)
-                for i, (nut, gap) in enumerate(gaps.items()):
-                    with cols[i]:
-                        if gap > 0:
-                            msg = f"{nut} Deficit: {gap} units."
-                            st.error(msg); fert_advice.append(msg)
-                        else:
-                            st.success(f"{nut}: Optimal"); fert_advice.append(f"{nut}: Optimal")
+    # --- INTERACTIVE DISPLAY AREA ---
+    if st.session_state.get('ready'):
+        st.markdown("### 🏆 Top Recommendations")
+        
+        # Display cards for top 3
+        c1, c2, c3 = st.columns(3)
+        for i, (crop, prob) in enumerate(zip(st.session_state['top_crops'], st.session_state['top_probs'])):
+            with [c1, c2, c3][i]:
+                st.markdown(f"""<div class="result-card">
+                    <p style="color: #4CAF50; font-size: 12px; font-weight: bold;">OPTION {i+1}</p>
+                    <h3 style="margin:0;">{crop}</h3>
+                    <p style="font-size: 14px;">{prob*100:.1f}% Match</p></div>""", unsafe_allow_html=True)
 
+        st.write("---")
+        # Interactive Selection
+        selected_crop = st.radio(
+            "👉 **Select a crop below to view its Live Market Price & Fertilizer Needs:**",
+            st.session_state['top_crops'], horizontal=True
+        )
+
+        # Dynamic Fetching
+        market_info = fetch_live_market_data(selected_crop)
+        
+        # UI for Selected Crop
+        if market_info:
+            status = "🟢 LIVE" if market_info['is_live'] else "🟡 ESTIMATED"
+            st.markdown(f"### {status} Market Insights for {selected_crop}")
+            m_col1, m_col2 = st.columns(2)
+            m_col1.metric("Current Market Price", f"Rs. {market_info['price']} / Quintal")
+            m_col2.info(f"📍 **Market:** {market_info['market']}, {market_info['state']}\n📅 **Updated:** {market_info['date']}")
+
+        if selected_crop in CROP_IDEALS:
+            st.markdown(f"### 🛠️ Fertilizer Analysis for {selected_crop}")
+            ideal = CROP_IDEALS[selected_crop]
+            gaps = {"N": ideal['N']-N, "P": ideal['P']-P, "K": ideal['K']-K}
+            f_cols = st.columns(3)
+            advice = []
+            for i, (nut, gap) in enumerate(gaps.items()):
+                with f_cols[i]:
+                    if gap > 0:
+                        msg = f"{nut} Deficit: {gap} units."
+                        st.error(msg); advice.append(msg)
+                    else:
+                        st.success(f"{nut}: Optimal"); advice.append(f"{nut}: Optimal")
+
+            # PDF Download for Selected Crop
             report_dict = {"N": N, "P": P, "K": K, "Temp": temp, "Hum": hum, "pH": ph, "Rain": rain}
-            pdf_bytes = generate_pdf(top_crops, report_dict, fert_advice, market_info)
-            st.download_button("📥 Download Report (PDF)", data=pdf_bytes, file_name=f"{primary_crop}_report.pdf")
-        else: st.error("Model assets missing.")
+            pdf_bytes = generate_pdf([selected_crop], report_dict, advice, market_info)
+            st.download_button(f"📥 Download {selected_crop} Report (PDF)", data=pdf_bytes, file_name=f"{selected_crop}_report.pdf")
 
 else:
     st.markdown("<h1 style='color: #4CAF50;'>📖 Crop Intelligence Base</h1>", unsafe_allow_html=True)
