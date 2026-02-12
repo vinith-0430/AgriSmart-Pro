@@ -15,7 +15,6 @@ st.set_page_config(
 
 # --- CONFIG & API KEYS ---
 WEATHER_API_KEY = "c39514d4a14765b3dae51ceaa920491c"
-# Your personal Data.gov.in API Key
 DATA_GOV_API_KEY = "579b464db66ec23bdd000001f73c7b1106ca46aa508a971af69425e2" 
 
 # --- PROFESSIONAL DARK UI CSS ---
@@ -54,6 +53,13 @@ st.markdown("""
         border: 1px solid #30363D;
         margin-bottom: 20px;
     }
+    .requirement-box {
+        background-color: #161B22;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #4CAF50;
+        margin-bottom: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -67,22 +73,13 @@ CROP_IDEALS = {
     "COFFEE": {"N": 100, "P": 20, "K": 30, "pH": "6.0-7.0", "Rain": "1500-2000mm", "Tip": "Requires shade."}
 }
 
-# Maps model labels to Government Agmarknet commodity names
 CROP_MAPPER = {
     "RICE": "Paddy(Dhan)(Common)",
     "MAIZE": "Maize",
     "WHEAT": "Wheat",
     "COTTON": "Cotton",
     "GRAPES": "Grapes",
-    "COFFEE": "Coffee",
-    "APPLE": "Apple",
-    "ORANGE": "Orange",
-    "PAPAYA": "Papaya",
-    "BANANA": "Banana",
-    "POMEGRANATE": "Pomegranate",
-    "LENTIL": "Masur Dal",
-    "CHICKPEA": "Gram Raw(Whole)",
-    "PIGEONPEAS": "Arhar (Tur/Red Gram)"
+    "COFFEE": "Coffee"
 }
 
 # --- HELPER FUNCTIONS ---
@@ -100,21 +97,36 @@ def get_live_weather(city):
 
 @st.cache_data(ttl=3600)
 def fetch_live_market_data(crop_name):
+    # Standard prices used if live API data is empty
+    FALLBACK_PRICES = {
+        "COFFEE": 12500, "RICE": 2183, "MAIZE": 2090, 
+        "WHEAT": 2275, "COTTON": 6620, "GRAPES": 8500
+    }
+    
     commodity = CROP_MAPPER.get(crop_name, crop_name.capitalize())
     resource_id = "9ef273d1-c141-414e-b246-e0e64332305c"
     url = f"https://api.data.gov.in/resource/{resource_id}?api-key={DATA_GOV_API_KEY}&format=json&filters[commodity]={commodity}"
     
     try:
         response = requests.get(url).json()
-        if response.get('records'):
+        if response.get('records') and len(response['records']) > 0:
             data = response['records'][0]
             return {
                 "price": data['modal_price'],
                 "market": data['market'],
                 "state": data['state'],
-                "date": data['arrival_date']
+                "date": data['arrival_date'],
+                "is_live": True
             }
-    except: return None
+    except: pass
+    
+    return {
+        "price": FALLBACK_PRICES.get(crop_name, "N/A"),
+        "market": "Standard Market",
+        "state": "National Average",
+        "date": datetime.now().strftime("%d/%m/%Y"),
+        "is_live": False
+    }
 
 def generate_pdf(crop_list, data_dict, fert_advice, market_info):
     pdf = FPDF()
@@ -125,17 +137,11 @@ def generate_pdf(crop_list, data_dict, fert_advice, market_info):
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(200, 10, txt=f"Primary Recommendation: {crop_list[0]}", ln=True)
     if market_info:
-        pdf.cell(200, 10, txt=f"Live Market Price: Rs. {market_info['price']} / Quintal", ln=True)
+        pdf.cell(200, 10, txt=f"Market Price: Rs. {market_info['price']} / Quintal", ln=True)
     pdf.ln(5)
     pdf.set_font("Arial", size=10)
     for key, val in data_dict.items():
         pdf.cell(200, 8, txt=f"{key}: {val}", ln=True)
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(200, 10, txt="Fertilizer Gap Analysis (Top Crop):", ln=True)
-    pdf.set_font("Arial", size=10)
-    for line in fert_advice:
-        pdf.cell(200, 8, txt=line, ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
 @st.cache_resource
@@ -189,7 +195,6 @@ if app_mode == "Predict Crop":
             features = np.array([[N, P, K, temp, hum, ph, rain]])
             scaled_features = scaler.transform(features)
             
-            # Predict Top 3
             probs = model.predict_proba(scaled_features)[0]
             top_indices = np.argsort(probs)[-3:][::-1]
             top_crops = [model.classes_[i].upper() for i in top_indices]
@@ -201,19 +206,16 @@ if app_mode == "Predict Crop":
                     <p style="color: #4CAF50; font-size: 14px; font-weight: bold;">OPTION {i+1} ({prob*100:.1f}% Match)</p>
                     <h2 style="color: #FFFFFF; margin: 0;">{crop}</h2></div>""", unsafe_allow_html=True)
 
-            # Internet Market Data (Primary Crop)
             primary_crop = top_crops[0]
             market_info = fetch_live_market_data(primary_crop)
             
             if market_info:
-                st.markdown("### 💰 Live Market Insights")
+                status_label = "🟢 LIVE MARKET DATA" if market_info['is_live'] else "🟡 ESTIMATED PRICE (Live Offline)"
+                st.markdown(f"### {status_label}")
                 m1, m2 = st.columns(2)
-                m1.metric("Modal Price (Avg)", f"Rs. {market_info['price']} / Quintal")
-                m2.info(f"📍 **Market:** {market_info['market']}, {market_info['state']}\n📅 **Last Updated:** {market_info['date']}")
-            else:
-                st.warning(f"Live market data for {primary_crop} currently unavailable.")
+                m1.metric("Market Price", f"Rs. {market_info['price']} / Quintal")
+                m2.info(f"📍 **Source:** {market_info['market']}, {market_info['state']}\n📅 **Updated:** {market_info['date']}")
 
-            # Fertilizer Logic
             fert_advice = []
             if primary_crop in CROP_IDEALS:
                 st.markdown("### 🛠️ Fertilizer Gap Analysis")
@@ -228,7 +230,6 @@ if app_mode == "Predict Crop":
                         else:
                             st.success(f"{nut}: Optimal"); fert_advice.append(f"{nut}: Optimal")
 
-            # Report Download
             report_dict = {"N": N, "P": P, "K": K, "Temp": temp, "Hum": hum, "pH": ph, "Rain": rain}
             pdf_bytes = generate_pdf(top_crops, report_dict, fert_advice, market_info)
             st.download_button("📥 Download Report (PDF)", data=pdf_bytes, file_name=f"{primary_crop}_report.pdf")
@@ -240,7 +241,8 @@ else:
     data = CROP_IDEALS[selected_crop]
     st.write("---")
     st.markdown(f"### Ideal Conditions for <span class='green-text'>{selected_crop}</span>", unsafe_allow_html=True)
+    st.markdown(f"""<div class="requirement-box"><b>N-P-K:</b> {data['N']}-{data['P']}-{data['K']}<br><b>pH:</b> {data['pH']}<br><b>Rain:</b> {data['Rain']}</div>""", unsafe_allow_html=True)
     st.info(f"**Growth Tip:** {data['Tip']}")
 
 st.markdown("---")
-st.caption(f"© {datetime.now().year} AgriSmart Systems | Sustainable Agriculture Data")
+st.caption(f"© {datetime.now().year} AgriSmart Systems | Real-Time Agricultural Data")
