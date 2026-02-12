@@ -49,6 +49,7 @@ st.markdown("""
         padding: 25px;
         border-radius: 10px;
         border: 1px solid #30363D;
+        margin-bottom: 20px;
     }
     .requirement-box {
         background-color: #161B22;
@@ -60,13 +61,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- CROP KNOWLEDGE DATA ---
+# --- CROP KNOWLEDGE DATA (Updated with Price & Season) ---
 CROP_DATA = {
-    "RICE": {"N": 80, "P": 40, "K": 40, "pH": "5.5 - 6.5", "Rain": "1000mm+", "Tip": "Maintain standing water during the vegetative stage."},
-    "MAIZE": {"N": 100, "P": 50, "K": 30, "pH": "6.0 - 7.0", "Rain": "500-800mm", "Tip": "Ensure good drainage; avoid waterlogging at the root zone."},
-    "WHEAT": {"N": 120, "P": 60, "K": 40, "pH": "6.0 - 7.5", "Rain": "450-650mm", "Tip": "Requires cool weather during the early growth stage."},
-    "COTTON": {"N": 100, "P": 50, "K": 50, "pH": "5.5 - 7.5", "Rain": "500-1000mm", "Tip": "Avoid excess Nitrogen late in the season to prevent pest attacks."},
-    "GRAPES": {"N": 50, "P": 30, "K": 80, "pH": "6.5 - 7.5", "Rain": "400-600mm", "Tip": "High Potassium is key for sugar content and fruit quality."}
+    "RICE": {"N": 80, "P": 40, "K": 40, "pH": "5.5-6.5", "Rain": "1000mm+", "Price": 2183, "Season": "Kharif", "Tip": "Maintain standing water during vegetative stage."},
+    "MAIZE": {"N": 100, "P": 50, "K": 30, "pH": "6.0-7.0", "Rain": "500-800mm", "Price": 2090, "Season": "Kharif", "Tip": "Ensure good drainage; avoid waterlogging."},
+    "WHEAT": {"N": 120, "P": 60, "K": 40, "pH": "6.0-7.5", "Rain": "450-650mm", "Price": 2275, "Season": "Rabi", "Tip": "Requires cool weather during early growth."},
+    "COTTON": {"N": 100, "P": 50, "K": 50, "pH": "5.5-7.5", "Rain": "500-1000mm", "Price": 6620, "Season": "Kharif", "Tip": "Avoid excess Nitrogen late in the season."},
+    "GRAPES": {"N": 50, "P": 30, "K": 80, "pH": "6.5-7.5", "Rain": "400-600mm", "Price": 8500, "Season": "Perennial", "Tip": "High Potassium is key for sugar content."},
+    "COFFEE": {"N": 100, "P": 20, "K": 30, "pH": "6.0-7.0", "Rain": "1500-2000mm", "Price": 12000, "Season": "Perennial", "Tip": "Requires shade and well-distributed rainfall."}
 }
 
 # --- HELPER FUNCTIONS ---
@@ -83,21 +85,21 @@ def get_live_weather(city):
     except: return None
     return None
 
-def generate_pdf(crop, data_dict, fertilizer_advice):
+def generate_pdf(crop_list, data_dict, fertilizer_advice):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(200, 10, txt="AgriSmart Pro - Farm Analysis Report", ln=True, align='C')
     pdf.ln(10)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(200, 10, txt=f"Recommended Crop: {crop}", ln=True)
+    pdf.cell(200, 10, txt=f"Primary Recommendation: {crop_list[0]}", ln=True)
     pdf.ln(5)
     pdf.set_font("Arial", size=10)
     for key, val in data_dict.items():
         pdf.cell(200, 8, txt=f"{key}: {val}", ln=True)
     pdf.ln(5)
     pdf.set_font("Arial", 'B', 11)
-    pdf.cell(200, 10, txt="Fertilizer Gap Analysis:", ln=True)
+    pdf.cell(200, 10, txt="Fertilizer Gap Analysis (Top Crop):", ln=True)
     pdf.set_font("Arial", size=10)
     for line in fertilizer_advice:
         pdf.cell(200, 8, txt=line, ln=True)
@@ -106,7 +108,6 @@ def generate_pdf(crop, data_dict, fertilizer_advice):
 @st.cache_resource
 def load_assets():
     try:
-        # Loading pre-trained models
         model = pickle.load(open("crop_model.pkl", "rb"))
         scaler = pickle.load(open("scaler.pkl", "rb"))
         return model, scaler
@@ -119,7 +120,6 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2942/2942544.png", width=80)
     st.title("Control Panel")
     app_mode = st.radio("Select Application Mode:", ["Predict Crop", "Crop Requirements"], index=0)
-    st.info("🤖 **AI Engine Active**")
 
 # --- MODE 1: PREDICTION ---
 if app_mode == "Predict Crop":
@@ -130,8 +130,7 @@ if app_mode == "Predict Crop":
         if st.button("Fetch Live Weather"):
             w_data = get_live_weather(city_input)
             if w_data:
-                st.session_state['temp'] = w_data['temp']
-                st.session_state['hum'] = w_data['hum']
+                st.session_state['temp'], st.session_state['hum'] = w_data['temp'], w_data['hum']
                 st.success(f"Weather in {city_input}: {w_data['desc']}")
             else: st.error("City not found.")
 
@@ -146,54 +145,61 @@ if app_mode == "Predict Crop":
 
     with col2:
         st.subheader("☁️ Environmental Metrics")
-        # Explicit type casting to float fixes the StreamlitAPIException
         t_val = float(st.session_state.get('temp', 25.0))
         h_val = float(st.session_state.get('hum', 80.0))
-        
         temp = st.slider("Temperature (°C)", 0.0, 50.0, t_val)
         hum = st.slider("Humidity (%)", 0.0, 100.0, h_val)
         rain = st.number_input("Rainfall (mm)", 0.0, 500.0, 200.0)
 
-    # Indented block to ensure Run Analysis is inside Predict Crop mode
     if st.button("🚀 RUN ANALYSIS"):
         if model and scaler:
-            # Preparing features for the model
             features = np.array([[N, P, K, temp, hum, ph, rain]])
             scaled_features = scaler.transform(features)
-            crop_name = str(model.predict(scaled_features)[0]).upper()
             
-            st.markdown(f"""
-                <div class="result-card">
-                    <p style="color: #4CAF50; font-size: 14px; font-weight: bold;">AI RECOMMENDATION</p>
-                    <h1 style="color: #FFFFFF; margin: 0; font-size: 3rem;">{crop_name}</h1>
-                </div>
-            """, unsafe_allow_html=True)
+            # --- TOP 3 RECOMMENDATIONS LOGIC ---
+            probs = model.predict_proba(scaled_features)[0]
+            top_indices = np.argsort(probs)[-3:][::-1]
+            top_crops = [model.classes_[i].upper() for i in top_indices]
+            top_probs = [probs[i] for i in top_indices]
 
-            # Fertilizer Logic
+            st.markdown("### 🏆 Top Recommendations")
+            for i, (crop, prob) in enumerate(zip(top_crops, top_probs)):
+                st.markdown(f"""
+                    <div class="result-card">
+                        <p style="color: #4CAF50; font-size: 14px; font-weight: bold;">OPTION {i+1} ({prob*100:.1f}% Match)</p>
+                        <h2 style="color: #FFFFFF; margin: 0;">{crop}</h2>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            # --- FINANCIAL FORECAST (Primary Crop) ---
+            primary_crop = top_crops[0]
+            if primary_crop in CROP_DATA:
+                st.markdown("### 💰 Financial Forecast")
+                c_data = CROP_DATA[primary_crop]
+                f1, f2 = st.columns(2)
+                f1.metric("Estimated Market Price", f"₹{c_data['Price']} / Quintal")
+                f2.info(f"**Optimal Season:** {c_data['Season']}")
+
+            # --- FERTILIZER LOGIC (Primary Crop) ---
             fert_advice = []
-            if crop_name in CROP_DATA:
+            if primary_crop in CROP_DATA:
                 st.markdown("### 🛠️ Fertilizer Gap Analysis")
-                ideal = CROP_DATA[crop_name]
-                gaps = {"N": ideal['N'] - N, "P": ideal['P'] - P, "K": ideal['K'] - K}
-                
+                ideal = CROP_DATA[primary_crop]
+                gaps = {"N": ideal['N']-N, "P": ideal['P']-P, "K": ideal['K']-K}
                 cols = st.columns(3)
-                for i, (nutrient, gap) in enumerate(gaps.items()):
+                for i, (nut, gap) in enumerate(gaps.items()):
                     with cols[i]:
                         if gap > 0:
-                            msg = f"{nutrient} Deficit: {gap} units. Add fertilizer."
-                            st.error(msg)
-                            fert_advice.append(msg)
+                            msg = f"{nut} Deficit: {gap} units."
+                            st.error(msg); fert_advice.append(msg)
                         else:
-                            st.success(f"{nutrient}: Optimal")
-                            fert_advice.append(f"{nutrient}: Optimal")
+                            st.success(f"{nut}: Optimal"); fert_advice.append(f"{nut}: Optimal")
 
-            # PDF Download
-            report_dict = {"N": N, "P": P, "K": K, "Temp": temp, "Humidity": hum, "pH": ph, "Rain": rain}
-            pdf_bytes = generate_pdf(crop_name, report_dict, fert_advice)
-            st.download_button("📥 Download Report (PDF)", data=pdf_bytes, file_name=f"{crop_name}_report.pdf")
+            report_dict = {"N": N, "P": P, "K": K, "Temp": temp, "Hum": hum, "pH": ph, "Rain": rain}
+            pdf_bytes = generate_pdf(top_crops, report_dict, fert_advice)
+            st.download_button("📥 Download Report (PDF)", data=pdf_bytes, file_name=f"{primary_crop}_report.pdf")
         else: st.error("Model assets missing.")
 
-# --- MODE 2: CROP REQUIREMENTS ---
 else:
     st.markdown("<h1 style='color: #4CAF50;'>📖 Crop Intelligence Base</h1>", unsafe_allow_html=True)
     selected_crop = st.selectbox("Search for a crop:", list(CROP_DATA.keys()))
