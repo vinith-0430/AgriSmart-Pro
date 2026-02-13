@@ -216,7 +216,6 @@ def generate_pdf(crop_name, input_data, fert_advice, market_info):
     pdf.set_y(-30)
     pdf.set_font("Arial", 'I', 8)
     pdf.set_text_color(128, 128, 128)
-    pdf.cell(0, 10, "This report is AI-generated based on current market trends and soil analysis data.", align='C', ln=True)
     pdf.cell(0, 5, "AgriSmart Systems - Empowering Sustainable Agriculture", align='C')
 
     return pdf.output(dest='S').encode('latin-1')
