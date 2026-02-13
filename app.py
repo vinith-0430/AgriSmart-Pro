@@ -14,6 +14,7 @@ st.set_page_config(
 )
 
 # --- CONFIG & API KEYS ---
+# Note: Ensure these keys are active. Rainfall data is sometimes restricted in the free tier of OWM.
 WEATHER_API_KEY = "c39514d4a14765b3dae51ceaa920491c"
 DATA_GOV_API_KEY = "579b464db66ec23bdd000001f73c7b1106ca46aa508a971af69425e2" 
 
@@ -57,7 +58,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- MASTER KNOWLEDGE BASE (22 CROPS) ---
+# --- MASTER KNOWLEDGE BASE ---
 CROP_IDEALS = {
     "RICE": {"N": 80, "P": 40, "K": 40, "pH": "5.5-6.5", "Rain": "1000mm+", "Tip": "Maintain standing water."},
     "MAIZE": {"N": 100, "P": 50, "K": 30, "pH": "6.0-7.0", "Rain": "500-800mm", "Tip": "Ensure good drainage."},
@@ -105,118 +106,112 @@ FALLBACK_PRICES = {
 
 # --- HELPER FUNCTIONS ---
 def get_live_weather(city):
+    """Fetches Temp, Humidity, and Precipitation (Rainfall) from OpenWeatherMap"""
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric"
     try:
         response = requests.get(url).json()
         if response.get("cod") == 200:
+            # Current Rainfall (last 1h) - OWM only returns this if it is currently raining
+            rain_val = response.get("rain", {}).get("1h", 0)
+            
+            # Since prediction needs cumulative rainfall, if it's 0, we provide a regional estimate 
+            # (In a real app, you'd call a historical API, but here we estimate based on humidity)
+            estimated_annual_rain = rain_val if rain_val > 0 else (response["main"]["humidity"] * 12)
+
             return {
                 "temp": response["main"]["temp"],
                 "hum": response["main"]["humidity"],
+                "rain": estimated_annual_rain,
                 "desc": response["weather"][0]["description"].title()
             }
-    except: return None
+    except Exception as e:
+        print(f"Weather Error: {e}")
+        return None
 
 @st.cache_data(ttl=3600)
 def fetch_live_market_data(crop_name):
     commodity = CROP_MAPPER.get(crop_name)
     resource_id = "9ef273d1-c141-414e-b246-e0e64332305c"
     url = f"https://api.data.gov.in/resource/{resource_id}?api-key={DATA_GOV_API_KEY}&format=json&filters[commodity]={commodity}"
-    
     try:
         response = requests.get(url).json()
-        if response.get('records') and len(response['records']) > 0:
+        if response.get('records'):
             data = response['records'][0]
             return {"price": data['modal_price'], "market": data['market'], "state": data['state'], "date": data['arrival_date'], "is_live": True}
     except: pass
-    
     return {"price": FALLBACK_PRICES.get(crop_name, "N/A"), "market": "Standard Market", "state": "National Average", "date": datetime.now().strftime("%d/%m/%Y"), "is_live": False}
 
 def generate_pdf(crop_name, input_data, fert_advice, market_info):
     pdf = FPDF()
     pdf.add_page()
+    PRIMARY_COLOR = (46, 125, 50)
+    SECONDARY_COLOR = (240, 242, 246)
     
-    # --- STYLING ---
-    PRIMARY_COLOR = (46, 125, 50)  # Dark Green
-    SECONDARY_COLOR = (240, 242, 246) # Light Grey
-    TEXT_COLOR = (40, 40, 40)
-    
-    # --- HEADER ---
+    # Header
     pdf.set_fill_color(*PRIMARY_COLOR)
     pdf.rect(0, 0, 210, 40, 'F')
-    
     pdf.set_font("Arial", 'B', 24)
     pdf.set_text_color(255, 255, 255)
     pdf.cell(0, 20, "AgriSmart Pro Analysis", ln=True, align='C')
-    
     pdf.set_font("Arial", '', 10)
-    pdf.cell(0, 5, f"Generated on: {datetime.now().strftime('%d %b %Y | %H:%M')}", ln=True, align='C')
+    pdf.cell(0, 5, f"Report Generated: {datetime.now().strftime('%d %b %Y | %H:%M')}", ln=True, align='C')
     pdf.ln(20)
 
-    # --- MAIN CONTENT ---
-    pdf.set_text_color(*TEXT_COLOR)
-    
-    # Crop Title
+    # Content
+    pdf.set_text_color(40, 40, 40)
     pdf.set_font("Arial", 'B', 18)
     pdf.cell(0, 10, f"Analysis Report: {crop_name}", ln=True)
     pdf.set_draw_color(*PRIMARY_COLOR)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(10)
 
-    # --- MARKET INSIGHTS SECTION ---
+    # Market Section
     pdf.set_fill_color(*SECONDARY_COLOR)
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(0, 10, "  Market Intelligence", ln=True, fill=True)
-    pdf.ln(2)
-    
     pdf.set_font("Arial", '', 11)
+    pdf.ln(2)
     pdf.cell(95, 8, f"Price: Rs. {market_info['price']} / Quintal")
     pdf.cell(95, 8, f"Status: {'Live' if market_info['is_live'] else 'Estimated'}", ln=True)
     pdf.cell(95, 8, f"Market: {market_info['market']}")
     pdf.cell(95, 8, f"State: {market_info['state']}", ln=True)
     pdf.ln(8)
 
-    # --- SOIL & ENVIRONMENT SECTION ---
+    # Environment Section
     pdf.set_fill_color(*SECONDARY_COLOR)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "  Field Conditions & Input Data", ln=True, fill=True)
-    pdf.ln(2)
-    
+    pdf.cell(0, 10, "  Field Conditions", ln=True, fill=True)
     pdf.set_font("Arial", '', 11)
-    col_width = 90
+    pdf.ln(2)
     items = list(input_data.items())
     for i in range(0, len(items), 2):
         k1, v1 = items[i]
-        pdf.cell(col_width, 8, f"{k1}: {v1}")
+        pdf.cell(90, 8, f"{k1}: {v1}")
         if i+1 < len(items):
             k2, v2 = items[i+1]
-            pdf.cell(col_width, 8, f"{k2}: {v2}")
+            pdf.cell(90, 8, f"{k2}: {v2}")
         pdf.ln(8)
-    
     pdf.ln(8)
 
-    # --- FERTILIZER ADVICE SECTION ---
+    # Advice Section
     pdf.set_fill_color(*SECONDARY_COLOR)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "  Actionable Fertilizer Recommendations", ln=True, fill=True)
+    pdf.cell(0, 10, "  Fertilizer Recommendations", ln=True, fill=True)
     pdf.ln(2)
-    
     pdf.set_font("Arial", 'I', 11)
     for line in fert_advice:
         if "Deficit" in line:
-            pdf.set_text_color(200, 0, 0) 
-            pdf.cell(0, 8, f"! {line}", ln=True)
+            pdf.set_text_color(200, 0, 0)
+            pdf.cell(0, 8, f"CAUTION: {line}", ln=True)
         else:
-            pdf.set_text_color(0, 128, 0) 
-            pdf.cell(0, 8, f"Check: {line}", ln=True)
-            
-    pdf.set_text_color(*TEXT_COLOR)
-    pdf.ln(10)
-
-    # --- FOOTER ---
-    pdf.set_y(-30)
+            pdf.set_text_color(0, 128, 0)
+            pdf.cell(0, 8, f"OPTIMAL: {line}", ln=True)
+    
+    # Footer
+    pdf.set_y(-25)
     pdf.set_font("Arial", 'I', 8)
     pdf.set_text_color(128, 128, 128)
-    pdf.cell(0, 5, "AgriSmart Systems - Empowering Sustainable Agriculture", align='C')
+    pdf.cell(0, 10, "Powered by AgriSmart Systems - Precision Agriculture Data", align='C')
 
     return pdf.output(dest='S').encode('latin-1')
 
@@ -230,24 +225,25 @@ def load_assets():
 
 model, scaler = load_assets()
 
-# --- SIDEBAR ---
+# --- APP LAYOUT ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2942/2942544.png", width=80)
     st.title("Control Panel")
-    app_mode = st.radio("Select Application Mode:", ["Predict Crop", "Crop Intelligence"])
+    app_mode = st.radio("Select Mode:", ["Predict Crop", "Crop Intelligence"])
 
-# --- MODE 1: PREDICTION ---
 if app_mode == "Predict Crop":
     st.markdown("<h1 style='color: #4CAF50;'>🌾 Precision Crop Prediction</h1>", unsafe_allow_html=True)
     
-    with st.expander("📍 Auto-fill Weather Data via City"):
-        city_input = st.text_input("Enter City Name")
-        if st.button("Fetch Live Weather"):
+    with st.expander("📍 Auto-fill Environment Data via City"):
+        city_input = st.text_input("Enter City Name (e.g., Mumbai, London)")
+        if st.button("Fetch Live Weather & Rainfall"):
             w_data = get_live_weather(city_input)
             if w_data:
-                st.session_state['temp'], st.session_state['hum'] = w_data['temp'], w_data['hum']
-                st.success(f"Weather in {city_input}: {w_data['desc']}")
-            else: st.error("City not found.")
+                st.session_state['temp'] = w_data['temp']
+                st.session_state['hum'] = w_data['hum']
+                st.session_state['rain'] = w_data['rain']
+                st.success(f"Fetched Data for {city_input}: {w_data['desc']}")
+            else: st.error("City not found or API limit reached.")
 
     st.write("---")
     col1, col2 = st.columns(2, gap="large")
@@ -262,9 +258,11 @@ if app_mode == "Predict Crop":
         st.subheader("☁️ Environmental Metrics")
         t_val = float(st.session_state.get('temp', 25.0))
         h_val = float(st.session_state.get('hum', 80.0))
+        r_val = float(st.session_state.get('rain', 200.0))
+        
         temp = st.slider("Temperature (°C)", 0.0, 50.0, t_val)
         hum = st.slider("Humidity (%)", 0.0, 100.0, h_val)
-        rain = st.number_input("Rainfall (mm)", 0.0, 2000.0, 200.0)
+        rain = st.number_input("Rainfall (mm)", 0.0, 3000.0, r_val)
 
     if st.button("🚀 RUN ANALYSIS"):
         if model and scaler:
@@ -272,7 +270,6 @@ if app_mode == "Predict Crop":
             scaled_features = scaler.transform(features)
             probs = model.predict_proba(scaled_features)[0]
             top_indices = np.argsort(probs)[-3:][::-1]
-            
             st.session_state['top_crops'] = [model.classes_[i].upper() for i in top_indices]
             st.session_state['top_probs'] = [probs[i] for i in top_indices]
             st.session_state['ready'] = True
@@ -287,57 +284,30 @@ if app_mode == "Predict Crop":
                     <h3 style="margin:0;">{crop}</h3>
                     <p style="font-size: 14px;">{prob*100:.1f}% Match</p></div>""", unsafe_allow_html=True)
 
-        st.write("---")
-        selected_crop = st.radio(
-            "👉 **Select a crop below to view its Live Market Price & Fertilizer Needs:**",
-            st.session_state['top_crops'], horizontal=True
-        )
-
+        selected_crop = st.radio("Select crop for detailed report:", st.session_state['top_crops'], horizontal=True)
         market_info = fetch_live_market_data(selected_crop)
         
-        if market_info:
-            status = "🟢 LIVE" if market_info['is_live'] else "🟡 ESTIMATED"
-            st.markdown(f"### {status} Market Insights for {selected_crop}")
-            m_col1, m_col2 = st.columns(2)
-            m_col1.metric("Current Market Price", f"Rs. {market_info['price']} / Quintal")
-            m_col2.info(f"📍 **Market:** {market_info['market']}, {market_info['state']}\n📅 **Updated:** {market_info['date']}")
-
         if selected_crop in CROP_IDEALS:
-            st.markdown(f"### 🛠️ Fertilizer Analysis for {selected_crop}")
             ideal = CROP_IDEALS[selected_crop]
             gaps = {"Nitrogen": ideal['N']-N, "Phosphorus": ideal['P']-P, "Potassium": ideal['K']-K}
-            f_cols = st.columns(3)
             advice_list = []
+            st.markdown(f"#### 🛠️ Soil Needs for {selected_crop}")
+            f_cols = st.columns(3)
             for i, (nut, gap) in enumerate(gaps.items()):
                 with f_cols[i]:
-                    if gap > 0:
-                        msg = f"{nut} Deficit: {gap} units"
-                        st.error(msg); advice_list.append(msg)
-                    else:
-                        msg = f"{nut}: Optimal"
-                        st.success(msg); advice_list.append(msg)
+                    msg = f"{nut} Deficit: {gap} units" if gap > 0 else f"{nut}: Optimal"
+                    if gap > 0: st.error(msg) 
+                    else: st.success(msg)
+                    advice_list.append(msg)
 
-            # PDF Download Logic
-            report_dict = {
-                "Nitrogen (N)": N, "Phosphorus (P)": P, "Potassium (K)": K, 
-                "Temperature": f"{temp}°C", "Humidity": f"{hum}%", 
-                "pH Level": ph, "Rainfall": f"{rain}mm"
-            }
+            report_dict = {"N": N, "P": P, "K": K, "Temp": f"{temp}°C", "Humidity": f"{hum}%", "Rainfall": f"{rain}mm", "pH": ph}
             pdf_bytes = generate_pdf(selected_crop, report_dict, advice_list, market_info)
-            st.download_button(
-                label=f"📥 Download {selected_crop} Intelligence Report (PDF)",
-                data=pdf_bytes,
-                file_name=f"{selected_crop}_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
-            )
+            st.download_button(f"📥 Download {selected_crop} Report", data=pdf_bytes, file_name=f"{selected_crop}_Analysis.pdf")
 
 else:
     st.markdown("<h1 style='color: #4CAF50;'>📖 Crop Intelligence Base</h1>", unsafe_allow_html=True)
     selected_crop = st.selectbox("Search for a crop:", list(CROP_IDEALS.keys()))
-    data = CROP_IDEALS[selected_crop]
-    st.write("---")
-    st.markdown(f"### Ideal Conditions for <span class='green-text'>{selected_crop}</span>", unsafe_allow_html=True)
-    st.info(f"**Growth Tip:** {data['Tip']}")
+    st.info(f"**Growth Tip:** {CROP_IDEALS[selected_crop]['Tip']}")
 
 st.markdown("---")
-st.caption(f"© {datetime.now().year} AgriSmart Systems | Sustainable Agriculture Data")
+st.caption(f"© {datetime.now().year} AgriSmart Systems")
