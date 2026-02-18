@@ -1,3 +1,13 @@
+# FIX FOR PYTHON 3.13 CGI ERROR (Add this at the very top)
+import sys
+try:
+    import cgi
+except ImportError:
+    import types
+    cgi = types.ModuleType("cgi")
+    cgi.parse_header = lambda x: (x, {}) 
+    sys.modules["cgi"] = cgi
+
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -39,8 +49,8 @@ LANG_MAP = {
         "predict": "विश्लेषण करें",
         "voice_tip": "बोलने के लिए क्लिक करें (जैसे 'चावल के लिए भविष्यवाणी')",
         "insurance_head": "🏦 वित्तीय सुरक्षा और सरकारी योजनाएं",
-        "lat_label": "खेत का अक्षांश (Latitude)",
-        "lon_label": "खेत का देशांतर (Longitude)"
+        "lat_label": "अक्षांश (Latitude)",
+        "lon_label": "देशांतर (Longitude)"
     },
     "Tamil": {
         "welcome": "துல்லியமான பயிர் கணிப்பு", 
@@ -49,8 +59,18 @@ LANG_MAP = {
         "predict": "பகுப்பாய்வு செய்",
         "voice_tip": "பேச கிளிக் செய்யவும் (எ.கா. 'நெல்லுக்குக் கணிக்கவும்')",
         "insurance_head": "🏦 நிதி பாதுகாப்பு மற்றும் அரசு திட்டங்கள்",
-        "lat_label": "பண்ணை அட்சரேகை",
-        "lon_label": "பண்ணை தீர்க்கரேகை"
+        "lat_label": "அட்சரேகை",
+        "lon_label": "தீர்க்கரேகை"
+    },
+    "Telugu": {
+        "welcome": "ఖచ్చితమైన పంట అంచనా", 
+        "sync_btn": "శాటిలైట్ డేటాను సమకాలీకరించండి", 
+        "soil": "మట్టి పోషకాలు", 
+        "predict": "విశ్లేషణను ప్రారంభించండి",
+        "voice_tip": "మాట్లాడటానికి క్ளிక్ చేయండి",
+        "insurance_head": "🏦 ఆర్థిక భద్రత మరియు ప్రభుత్వ పథకాలు",
+        "lat_label": "అక్షాంశం",
+        "lon_label": "రేఖాంశం"
     }
 }
 
@@ -68,7 +88,7 @@ st.markdown("""
 # --- HELPER FUNCTIONS ---
 
 def get_satellite_weather(lat, lon):
-    """Satellite-Based Environment Auto-Fill"""
+    """LOGIC 1: Satellite-Based Environment Auto-Fill"""
     url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={WEATHER_API_KEY}&units=metric"
     try:
         response = requests.get(url).json()
@@ -82,7 +102,7 @@ def get_satellite_weather(lat, lon):
     except: return None
 
 def calculate_insurance(crop_name, rainfall, temp):
-    """Financial Risk Calculation"""
+    """LOGIC 3: Financial Risk Calculation"""
     base_val = 50000 
     rate = 0.02 
     if rainfall < 300 or rainfall > 2000: rate += 0.015
@@ -92,11 +112,11 @@ def calculate_insurance(crop_name, rainfall, temp):
 @st.cache_resource
 def load_assets():
     try:
-        # Loading provided model and scaler
         model = pickle.load(open("crop_model.pkl", "rb"))
         scaler = pickle.load(open("scaler.pkl", "rb"))
         return model, scaler
-    except: return None, None
+    except Exception as e:
+        return None, None
 
 model, scaler = load_assets()
 
@@ -110,16 +130,17 @@ with st.sidebar:
 if app_mode == "Predict Crop":
     st.markdown(f"<h1 style='color: #4CAF50;'>🌾 {texts['welcome']}</h1>", unsafe_allow_html=True)
     
-    # --- VOICE UI ---
+    # --- LOGIC 2: VOICE UI ---
     st.subheader("🎙️ Voice Assistant")
     voice_input = speech_to_text(language='en-US', start_prompt=texts['voice_tip'], key='speech')
     if voice_input:
         st.info(f"Heard: {voice_input}")
+        # Simple voice command logic
         if "rice" in voice_input.lower():
             st.session_state['temp'], st.session_state['hum'] = 27.0, 85.0
-            st.success("Auto-setting environment for Rice prediction...")
+            st.success("Auto-filled environmental parameters for Rice.")
 
-    # --- SATELLITE AUTO-FILL ---
+    # --- LOGIC 1: SATELLITE AUTO-FILL ---
     st.markdown(f"### 🛰️ {texts['sync_btn']}")
     col_lat, col_lon = st.columns(2)
     with col_lat: 
@@ -134,7 +155,7 @@ if app_mode == "Predict Crop":
                 st.session_state['temp'] = w['temp']
                 st.session_state['hum'] = w['hum']
                 st.session_state['rain'] = w['rain']
-                st.success(f"Synced Successfully: {w['desc']} | Temp: {w['temp']}°C")
+                st.success(f"Synced: {w['desc']} | Temp: {w['temp']}°C")
             else:
                 st.error("Connection failed. Check coordinates or API key.")
 
@@ -149,7 +170,8 @@ if app_mode == "Predict Crop":
         ph = st.slider("Soil pH", 0.0, 14.0, 6.5)
 
     with c2:
-        st.subheader("☁️ Environmental Data")
+        st.subheader("☁️ Environment")
+        # Use Satellite data from session state
         temp = st.slider("Temp °C", 0.0, 50.0, float(st.session_state.get('temp', 25.0)))
         hum = st.slider("Humidity %", 0.0, 100.0, float(st.session_state.get('hum', 80.0)))
         rain = st.number_input("Rainfall mm", 0.0, 3000.0, float(st.session_state.get('rain', 200.0)))
@@ -168,22 +190,18 @@ if app_mode == "Predict Crop":
             with cols[i]:
                 st.markdown(f'<div class="result-card"><h4>{crop}</h4><p>{p*100:.1f}% Match</p></div>', unsafe_allow_html=True)
         
-        # --- INSURANCE & LOAN CALCULATOR ---
+        # --- LOGIC 3: INSURANCE & LOAN CALCULATOR ---
         st.markdown(f"### {texts['insurance_head']}")
         sel_crop = st.session_state['res'][0][0]
         prem, total = calculate_insurance(sel_crop, rain, temp)
         
         ic1, ic2 = st.columns(2)
-        with ic1: 
-            st.metric("Annual Insurance Premium", f"₹{int(prem)}")
-        with ic2: 
-            st.metric("Total Sum Insured (Coverage)", f"₹{int(total)}")
-        
-        st.info("💡 **Recommended Action:** Register at [PM Fasal Bima Yojana](https://pmfby.gov.in/) for protection.")
+        with ic1: st.metric("Annual Premium", f"₹{int(prem)}")
+        with ic2: st.metric("Sum Insured", f"₹{int(total)}")
+        st.info("💡 **Scheme:** [Pradhan Mantri Fasal Bima Yojana](https://pmfby.gov.in/)")
 
 else:
     st.markdown("<h1 style='color: #4CAF50;'>📖 Crop Intelligence Base</h1>", unsafe_allow_html=True)
-    st.info("Explore specialized growth tips and cultivation data.")
+    st.info("Search specialized growth tips and historical crop data here.")
 
-st.markdown("---")
 st.caption(f"© {datetime.now().year} AgriSmart Pro | National Level Hackathon Module")
