@@ -4,3 +4,5 @@ pandas
 scikit-learn
 requests
 fpdf
+streamlit-mic-recorder
+googletrans==4.0.0-rc1
