@@ -14,8 +14,7 @@ st.set_page_config(
 )
 
 # --- CONFIG & API KEYS ---
-# Note: Ensure these keys are active. Rainfall data is sometimes restricted in the free tier of OWM.
-WEATHER_API_KEY = "c39514d4a14765b3dae51ceaa920491c"
+WEATHER_API_KEY = "7e2b97bb80efdd6e97c83bfc3fa624fa"
 DATA_GOV_API_KEY = "579b464db66ec23bdd000001f73c7b1106ca46aa508a971af69425e2" 
 
 # --- PROFESSIONAL DARK UI CSS ---
@@ -105,27 +104,21 @@ FALLBACK_PRICES = {
 }
 
 # --- HELPER FUNCTIONS ---
-def get_live_weather(city):
-    """Fetches Temp, Humidity, and Precipitation (Rainfall) from OpenWeatherMap"""
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric"
+def get_satellite_weather(lat, lon):
+    """Fetches high-precision environmental metrics using geo-coordinates"""
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={WEATHER_API_KEY}&units=metric"
     try:
         response = requests.get(url).json()
         if response.get("cod") == 200:
-            # Current Rainfall (last 1h) - OWM only returns this if it is currently raining
-            rain_val = response.get("rain", {}).get("1h", 0)
-            
-            # Since prediction needs cumulative rainfall, if it's 0, we provide a regional estimate 
-            # (In a real app, you'd call a historical API, but here we estimate based on humidity)
-            estimated_annual_rain = rain_val if rain_val > 0 else (response["main"]["humidity"] * 12)
-
-            return {
+            weather_data = {
                 "temp": response["main"]["temp"],
                 "hum": response["main"]["humidity"],
-                "rain": estimated_annual_rain,
+                "rain": response.get("rain", {}).get("1h", 0) * 24, # Daily estimate
                 "desc": response["weather"][0]["description"].title()
             }
+            return weather_data
     except Exception as e:
-        print(f"Weather Error: {e}")
+        print(f"Satellite Data Error: {e}")
         return None
 
 @st.cache_data(ttl=3600)
@@ -234,16 +227,24 @@ with st.sidebar:
 if app_mode == "Predict Crop":
     st.markdown("<h1 style='color: #4CAF50;'>🌾 Precision Crop Prediction</h1>", unsafe_allow_html=True)
     
-    with st.expander("📍 Auto-fill Environment Data via City"):
-        city_input = st.text_input("Enter City Name (e.g., Mumbai, London)")
-        if st.button("Fetch Live Weather & Rainfall"):
-            w_data = get_live_weather(city_input)
-            if w_data:
-                st.session_state['temp'] = w_data['temp']
-                st.session_state['hum'] = w_data['hum']
-                st.session_state['rain'] = w_data['rain']
-                st.success(f"Fetched Data for {city_input}: {w_data['desc']}")
-            else: st.error("City not found or API limit reached.")
+    # --- NEW SATELLITE SYNC LOGIC ---
+    st.markdown("### 🛰️ Satellite Farm Sync")
+    col_lat, col_lon = st.columns(2)
+    with col_lat:
+        lat_input = st.number_input("Farm Latitude", value=19.0760, format="%.4f")
+    with col_lon:
+        lon_input = st.number_input("Farm Longitude", value=72.8777, format="%.4f")
+
+    if st.button("🛰️ Sync Real-time Satellite Data"):
+        with st.spinner('Accessing satellite feeds...'):
+            sat_data = get_satellite_weather(lat_input, lon_input)
+            if sat_data:
+                st.session_state['temp'] = sat_data['temp']
+                st.session_state['hum'] = sat_data['hum']
+                st.session_state['rain'] = sat_data['rain']
+                st.success(f"Synced Successfully: {sat_data['desc']}")
+            else:
+                st.error("Satellite connection failed. Check your API key or coordinates.")
 
     st.write("---")
     col1, col2 = st.columns(2, gap="large")
@@ -255,7 +256,7 @@ if app_mode == "Predict Crop":
         ph = st.slider("Soil pH Level", 0.0, 14.0, 6.5)
 
     with col2:
-        st.subheader("☁️ Environmental Metrics")
+        st.subheader("☁️ Environmental Metrics (Auto-filled)")
         t_val = float(st.session_state.get('temp', 25.0))
         h_val = float(st.session_state.get('hum', 80.0))
         r_val = float(st.session_state.get('rain', 200.0))
