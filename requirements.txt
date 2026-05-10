@@ -1,7 +1,5 @@
 streamlit-mic-recorder
-googletrans==4.0.0-rc1
-httpx==0.24.1
-httpcore==0.17.3
+googletrans==4.0.0rc1
 requests
 fpdf
 scikit-learn
