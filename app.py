@@ -204,4 +204,4 @@ else:
     st.markdown("<h1 style='color: #4CAF50;'>📖 Crop Intelligence Base</h1>", unsafe_allow_html=True)
     st.info("Search specialized growth tips and historical crop data here.")
 
-st.caption(f"© {datetime.now().year} AgriSmart Pro | National Level Hackathon Module")
+st.caption(f"© {datetime.now().year} AgriSmart Pro ")
